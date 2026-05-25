@@ -344,10 +344,13 @@ async def clear(ctx, amount: int = 10):
 async def join(ctx):
     if ctx.author.voice:
         channel = ctx.author.voice.channel
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
-        await channel.connect()
-        await ctx.send(f"Masuk ke **{channel}**")
+        try:
+            if ctx.voice_client:
+                await ctx.voice_client.disconnect()
+            await channel.connect()
+            await ctx.send(f"Masuk ke **{channel}**")
+        except Exception as e:
+            await ctx.send(f"Gagal masuk voice: {e}")
     else:
         await ctx.send("Masuk voice dulu bang")
 
