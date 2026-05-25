@@ -120,28 +120,40 @@ def get_roblox_avatar_url(user_id):
 
 def get_roblox_presence(users):
     url = "https://presence.roblox.com/v1/presence/users"
+
     r = requests.post(
         url,
         json={"userIds": users},
         cookies={".ROBLOSECURITY": ROBLOX_COOKIE}
     )
-    data = r.json().get("userPresences", [])
-    # Debug: print location tiap user
-    for u in data:
-        print(f"UID: {u['userId']} | presence: {u['userPresenceType']} | location: {u.get('lastLocation')!r}")
-    return data
 
-def get_online_friends():
-    if not ROBLOX_BOT_USER_ID:
-        return set()
+    print("\n========== ROBLOX API DEBUG ==========")
+    print("HTTP:", r.status_code)
+
     try:
-        url = f"https://friends.roblox.com/v1/users/{ROBLOX_BOT_USER_ID}/friends/online"
-        r = requests.get(url, cookies={".ROBLOSECURITY": ROBLOX_COOKIE})
-        data = r.json()
-        return {friend["id"] for friend in data.get("data", [])}
+        raw = r.json()
+        print("RAW RESPONSE:")
+        print(json.dumps(raw, indent=2))
     except Exception as e:
-        print(f"Friends API error: {e}")
-        return set()
+        print("JSON parse error:", e)
+        return []
+
+    data = raw.get("userPresences", [])
+
+    print("\nPARSED:")
+    for u in data:
+        print(
+            f"UID={u.get('userId')} | "
+            f"presence={u.get('userPresenceType')} | "
+            f"lastLocation={repr(u.get('lastLocation'))} | "
+            f"placeId={u.get('placeId')} | "
+            f"rootPlaceId={u.get('rootPlaceId')} | "
+            f"gameId={u.get('gameId')}"
+        )
+
+    print("=====================================\n")
+
+    return data
 
 # =====================
 # status config
@@ -174,20 +186,27 @@ def resolve_status(user: dict, online_friend_ids: set) -> tuple:
     last_location = (user.get("lastLocation") or "").strip()
     uid = user.get("userId")
 
+    print(
+        f"[resolve_status] uid={uid} "
+        f"presence={presence} "
+        f"location={repr(last_location)}"
+    )
+
+    if presence == 2 and not last_location:
+        print(f"[WARNING] {uid} lagi In Game tapi lastLocation kosong")
+        last_location = "Unknown Game"
+
     if presence != 0:
         label = status_map.get(presence, "Unknown")
         color = status_color.get(presence, discord.Color.default())
         emoji = status_emoji.get(presence, "❓")
         return label, color, emoji, last_location, presence
 
-    in_friends_online = uid in online_friend_ids
-
-    if in_friends_online and last_location:
+    if uid in online_friend_ids:
+        print(f"[HIDDEN DETECTED] {uid}")
         return "Online (Hidden)", status_color[99], status_emoji[99], last_location, 99
-    elif in_friends_online:
-        return "Online (Hidden)", status_color[99], status_emoji[99], "", 99
-    else:
-        return "Offline", status_color[0], status_emoji[0], "", 0
+
+    return "Offline", status_color[0], status_emoji[0], "", 0
 
 # =====================
 # embed builders
