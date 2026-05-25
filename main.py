@@ -11,6 +11,9 @@ WIB = timezone(timedelta(hours=7))
 # =====================
 # secrets
 # =====================
+from dotenv import load_dotenv
+load_dotenv()
+
 TOKEN = os.getenv("TOKEN")
 ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
 ROBLOX_BOT_USER_ID = os.getenv("ROBLOX_BOT_USER_ID")
