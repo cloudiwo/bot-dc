@@ -3,6 +3,7 @@ from discord.ext import commands, tasks
 import os
 import requests
 import json
+import asyncio
 from datetime import datetime, timezone, timedelta, date
 
 WIB = timezone(timedelta(hours=7))
@@ -648,6 +649,7 @@ async def check_roblox():
                         status_label, color, emoji, location, _ = resolve_status(user, online_friend_ids)
                         embed = build_status_embed(user_info, status_label, color, emoji, location)
                         await msg.edit(embed=embed)
+                        await asyncio.sleep(2)  # jeda 2 detik antar edit supaya tidak kena rate limit
                     except discord.NotFound:
                         print(f"Dashboard embed untuk {uid} tidak ditemukan, dihapus dari list")
                         del dashboard_message_ids[uid]
