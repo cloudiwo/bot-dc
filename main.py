@@ -11,10 +11,6 @@ WIB = timezone(timedelta(hours=7))
 # =====================
 # secrets
 # =====================
-
-from dotenv import load_dotenv
-load_dotenv()
-
 TOKEN = os.getenv("TOKEN")
 ROBLOX_COOKIE = os.getenv("ROBLOX_COOKIE")
 ROBLOX_BOT_USER_ID = os.getenv("ROBLOX_BOT_USER_ID")
@@ -130,9 +126,6 @@ def get_roblox_presence(users):
         cookies={".ROBLOSECURITY": ROBLOX_COOKIE}
     )
     data = r.json().get("userPresences", [])
-    # Debug: print location tiap user
-    for u in data:
-        print(f"UID: {u['userId']} | presence: {u['userPresenceType']} | location: {u.get('lastLocation')!r}")
     return data
 
 def get_online_friends():
@@ -182,7 +175,9 @@ def resolve_status(user: dict, online_friend_ids: set) -> tuple:
         label = status_map.get(presence, "Unknown")
         color = status_color.get(presence, discord.Color.default())
         emoji = status_emoji.get(presence, "❓")
-        return label, color, emoji, last_location, presence
+        # Filter location 'Website' supaya tidak ditampilkan
+        clean_location = last_location if last_location and last_location.lower() != "website" else ""
+        return label, color, emoji, clean_location, presence
 
     in_friends_online = uid in online_friend_ids
 
