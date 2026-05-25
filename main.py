@@ -20,15 +20,15 @@ ROBLOX_BOT_USER_ID = os.getenv("ROBLOX_BOT_USER_ID")
 # =====================
 ALLOWED_USERS = [884745169050681386]
 CHANNEL_ID = 1507944297318715392
-DASHBOARD_CHANNEL_ID = 1507944297318715392  # bisa ganti ke channel lain khusus dashboard
+DASHBOARD_CHANNEL_ID = 1507944297318715392
 
 ROBLOX_FILE = "users.json"
 HISTORY_FILE = "history.json"
 
 last_status = {}
-last_location_cache = {}  # uid -> nama game terakhir yang dimainin
-dashboard_message_ids = {}  # uid -> message_id embed dashboard per user
-dashboard_channel_id_active = None  # channel ID tempat dashboard dikirim
+last_location_cache = {}
+dashboard_message_ids = {}
+dashboard_channel_id_active = None
 
 # =====================
 # discord setup
@@ -63,7 +63,6 @@ def save_history(history):
         json.dump(history, f, indent=2)
 
 def add_history(uid: int, username: str, prev_label: str, new_label: str, location: str):
-    """Simpan satu entry perubahan status ke history.json"""
     history = load_history()
     key = str(uid)
     today = str(date.today())
@@ -72,7 +71,7 @@ def add_history(uid: int, username: str, prev_label: str, new_label: str, locati
     if key not in history:
         history[key] = {"username": username, "logs": {}}
 
-    history[key]["username"] = username  # update username kalau ganti
+    history[key]["username"] = username
 
     if today not in history[key]["logs"]:
         history[key]["logs"][today] = []
@@ -84,7 +83,6 @@ def add_history(uid: int, username: str, prev_label: str, new_label: str, locati
         "location": location
     })
 
-    # Simpan max 30 hari per user, hapus yang lama
     logs = history[key]["logs"]
     sorted_days = sorted(logs.keys(), reverse=True)
     for old_day in sorted_days[30:]:
@@ -95,7 +93,7 @@ def add_history(uid: int, username: str, prev_label: str, new_label: str, locati
 # =====================
 # helper roblox
 # =====================
-user_info_cache = {}  # uid -> {name, display_name, id}
+user_info_cache = {}
 
 def get_roblox_user_info(user_id):
     if user_id in user_info_cache:
@@ -127,7 +125,11 @@ def get_roblox_presence(users):
         json={"userIds": users},
         cookies={".ROBLOSECURITY": ROBLOX_COOKIE}
     )
-    return r.json().get("userPresences", [])
+    data = r.json().get("userPresences", [])
+    # Debug: print location tiap user
+    for u in data:
+        print(f"UID: {u['userId']} | presence: {u['userPresenceType']} | location: {u.get('lastLocation')!r}")
+    return data
 
 def get_online_friends():
     if not ROBLOX_BOT_USER_ID:
@@ -228,48 +230,12 @@ def build_list_embed(users_data: list) -> discord.Embed:
             info = get_roblox_user_info(uid)
             lines.append(f"**{info['display_name']}** (@{info['name']}) — `{uid}`")
         embed.description = "\n".join(lines)
-        embed.set_footer(text=f"Total: {len(users_data)} user • Ketik !cekroblox <username> untuk cek satu user")
+        embed.set_footer(text=f"Total: {len(users_data)} user")
     else:
         embed.description = "Belum ada user yang ditambahkan."
     return embed
 
-def build_dashboard_embed(presence_data: list, online_friend_ids: set) -> discord.Embed:
-    """1 embed berisi status semua user, di-refresh terus"""
-    now = datetime.now(timezone.utc)
-    embed = discord.Embed(
-        title="📊 Roblox Monitor — Dashboard",
-        description="Status semua user yang dipantau saat ini.\n\u200b",
-        color=discord.Color.blurple(),
-        timestamp=now
-    )
-
-    if not presence_data:
-        embed.add_field(name="Tidak ada data", value="Belum ada user yang dipantau.", inline=False)
-    else:
-        for user in presence_data:
-            uid = user["userId"]
-            status_label, _, emoji, location, _ = resolve_status(user, online_friend_ids)
-            info = get_roblox_user_info(uid)
-            username = info["name"]
-            display_name = info["display_name"]
-            avatar_url = get_roblox_avatar_url(uid) or ""
-            profile_url = f"https://www.roblox.com/users/{uid}/profile"
-
-            # Nama tanpa emoji, avatar di thumbnail lewat teks (Discord embed field tidak support thumbnail per-field)
-            # Pakai format: nama + link profil sebagai judul, status + emoji di value
-            field_name = f"[{display_name}]({profile_url})  •  @{username}"
-            field_value = f"**Status:** {emoji} `{status_label}`"
-            if location:
-                field_value += f"\n**Game:** 🗺️ {location}"
-            field_value += "\n\u200b"
-
-            embed.add_field(name=field_name, value=field_value, inline=False)
-
-    embed.set_footer(text="🔄 Auto-refresh setiap 30 detik")
-    return embed
-
 def build_history_embed(uid: int, username: str, target_date: str = None) -> discord.Embed:
-    """Embed history perubahan status untuk 1 user"""
     history = load_history()
     key = str(uid)
     today = str(date.today())
@@ -411,9 +377,7 @@ async def delroblox(ctx, user_id: int):
 
 @bot.command()
 async def itemroblox(ctx, *, username: str):
-    """Tampilkan item yang dipakai user Roblox"""
     try:
-        # Cari user ID dari username
         r = requests.post(
             "https://users.roblox.com/v1/usernames/users",
             json={"usernames": [username], "excludeBannedUsers": False}
@@ -430,7 +394,6 @@ async def itemroblox(ctx, *, username: str):
         name = user.get("name", username)
         profile_url = f"https://www.roblox.com/users/{uid}/profile"
 
-        # Ambil list item yang dipakai
         r2 = requests.get(
             f"https://avatar.roblox.com/v1/users/{uid}/currently-wearing",
             cookies={".ROBLOSECURITY": ROBLOX_COOKIE}
@@ -442,9 +405,8 @@ async def itemroblox(ctx, *, username: str):
             await ctx.send(f"User `{username}` tidak pakai item apapun atau datanya tidak tersedia.")
             return
 
-        # Ambil nama semua item via economy API
         items_detail = []
-        for aid in asset_ids:  # semua item tanpa limit
+        for aid in asset_ids:
             try:
                 rd = requests.get(f"https://economy.roblox.com/v2/assets/{aid}/details")
                 detail = rd.json()
@@ -454,7 +416,6 @@ async def itemroblox(ctx, *, username: str):
             except:
                 items_detail.append({"id": aid, "name": f"Item {aid}", "url": f"https://www.roblox.com/catalog/{aid}"})
 
-        # Ambil thumbnail semua item sekaligus
         ids_param = "&".join([f"assetIds={i['id']}" for i in items_detail])
         r4 = requests.get(
             f"https://thumbnails.roblox.com/v1/assets?{ids_param}&returnPolicy=PlaceHolder&size=150x150&format=Png&isCircular=false"
@@ -463,7 +424,6 @@ async def itemroblox(ctx, *, username: str):
         for t in r4.json().get("data", []):
             thumb_map[t["targetId"]] = t.get("imageUrl", "")
 
-        # Kirim header embed dulu
         header_embed = discord.Embed(
             title=f"👗 Item yang dipakai — {display_name} (@{name})",
             description=f"[Lihat Profil]({profile_url}) • Total item: `{len(asset_ids)}`",
@@ -471,7 +431,6 @@ async def itemroblox(ctx, *, username: str):
         )
         await ctx.send(embed=header_embed)
 
-        # Kirim tiap item sebagai embed sendiri (dengan foto)
         for item in items_detail:
             item_embed = discord.Embed(
                 title=item["name"],
@@ -489,9 +448,7 @@ async def itemroblox(ctx, *, username: str):
 
 @bot.command()
 async def avaroblox(ctx, *, username: str):
-    """Tampilkan avatar Roblox siapa aja by username"""
     try:
-        # Cari user ID dari username
         r = requests.post(
             "https://users.roblox.com/v1/usernames/users",
             json={"usernames": [username], "excludeBannedUsers": False}
@@ -508,7 +465,6 @@ async def avaroblox(ctx, *, username: str):
         name = user.get("name", username)
         profile_url = f"https://www.roblox.com/users/{uid}/profile"
 
-        # Ambil avatar ukuran besar 720x720
         r2 = requests.get(
             f"https://thumbnails.roblox.com/v1/users/avatar?userIds={uid}&size=720x720&format=Png&isCircular=false"
         )
@@ -530,7 +486,6 @@ async def avaroblox(ctx, *, username: str):
 
 @bot.command()
 async def dashboard(ctx):
-    """Kirim 1 embed per user, lalu di-edit otomatis tiap 30 detik"""
     global dashboard_message_ids, dashboard_channel_id_active
     if ctx.author.id not in ALLOWED_USERS:
         await ctx.send("Lu gak punya akses ❌")
@@ -543,11 +498,9 @@ async def dashboard(ctx):
         presence_data = get_roblox_presence(users)
         online_friend_ids = get_online_friends()
 
-        # Reset dashboard lama
         dashboard_message_ids = {}
         dashboard_channel_id_active = ctx.channel.id
 
-        # Kirim 1 embed per user, simpan message ID-nya
         presence_map = {u["userId"]: u for u in presence_data}
         for uid in users:
             user = presence_map.get(uid)
@@ -565,12 +518,6 @@ async def dashboard(ctx):
 
 @bot.command()
 async def historyroblox(ctx, username: str, tanggal: str = None):
-    """
-    Lihat history status user via DM.
-    Usage:
-      !historyroblox <username>             → hari ini
-      !historyroblox <username> 2025-01-20  → tanggal tertentu
-    """
     await ctx.message.delete()
 
     users = load_users()
@@ -590,9 +537,7 @@ async def historyroblox(ctx, username: str, tanggal: str = None):
         embed = build_history_embed(target_uid, username, tanggal)
         await ctx.author.send(embed=embed)
     except discord.Forbidden:
-        # Kalau DM diblokir, kirim ke channel dan hapus setelah 10 detik
         msg = await ctx.send(embed=embed, delete_after=10)
-
 
 # =====================
 # auto monitor + dashboard refresh
@@ -612,7 +557,6 @@ async def check_roblox():
             uid = user["userId"]
             status_label, color, emoji, location, _ = resolve_status(user, online_friend_ids)
 
-            # Update cache lokasi kalau ada game yang sedang dimainkan
             if location:
                 last_location_cache[uid] = location
 
@@ -624,18 +568,14 @@ async def check_roblox():
                 prev = last_status[uid]
                 last_status[uid] = status_label
 
-                # Pakai lokasi sekarang, kalau kosong pakai cache terakhir
                 saved_location = location or last_location_cache.get(uid, "")
 
                 user_info = get_roblox_user_info(uid)
-                # Simpan ke history saja, tidak kirim notif
                 add_history(uid, user_info["name"], prev, status_label, saved_location)
 
-                # Kalau sudah offline, hapus cache lokasi
                 if status_label == "Offline":
                     last_location_cache.pop(uid, None)
 
-        # Update dashboard per user kalau ada
         if dashboard_message_ids and dashboard_channel_id_active:
             dashboard_channel = bot.get_channel(dashboard_channel_id_active)
             if dashboard_channel:
@@ -649,7 +589,7 @@ async def check_roblox():
                         status_label, color, emoji, location, _ = resolve_status(user, online_friend_ids)
                         embed = build_status_embed(user_info, status_label, color, emoji, location)
                         await msg.edit(embed=embed)
-                        await asyncio.sleep(2)  # jeda 2 detik antar edit supaya tidak kena rate limit
+                        await asyncio.sleep(2)
                     except discord.NotFound:
                         print(f"Dashboard embed untuk {uid} tidak ditemukan, dihapus dari list")
                         del dashboard_message_ids[uid]
