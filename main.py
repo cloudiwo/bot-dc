@@ -270,9 +270,14 @@ def build_history_embed(uid: int, username: str, target_date: str = None) -> dis
 @bot.event
 async def on_ready():
     print(f"{bot.user} online!")
+
     if not check_roblox.is_running():
         check_roblox.start()
         print("Roblox monitor started")
+
+    if not refresh_dashboard.is_running():
+        refresh_dashboard.start()
+        print("Dashboard refresh started")
 
 @bot.event
 async def on_message(message):
@@ -579,29 +584,68 @@ async def check_roblox():
                 if status_label == "Offline":
                     last_location_cache.pop(uid, None)
 
-        if dashboard_message_ids and dashboard_channel_id_active:
-            dashboard_channel = bot.get_channel(dashboard_channel_id_active)
-            if dashboard_channel:
-                for uid, msg_id in list(dashboard_message_ids.items()):
-                    user = presence_map.get(uid)
-                    if not user:
-                        continue
-                    try:
-                        msg = await dashboard_channel.fetch_message(msg_id)
-                        user_info = get_roblox_user_info(uid)
-                        status_label, color, emoji, location, _ = resolve_status(user, online_friend_ids)
-                        embed = build_status_embed(user_info, status_label, color, emoji, location)
-                        await msg.edit(embed=embed)
-                        await asyncio.sleep(2)
-                    except discord.NotFound:
-                        print(f"Dashboard embed untuk {uid} tidak ditemukan, dihapus dari list")
-                        del dashboard_message_ids[uid]
-                    except Exception as e:
-                        print(f"Error update dashboard uid {uid}: {e}")
-
     except Exception as e:
         print("Error monitor:", e)
+@tasks.loop(minutes=1)
+async def refresh_dashboard():
+    global dashboard_message_ids, dashboard_channel_id_active
 
+    if not dashboard_message_ids or not dashboard_channel_id_active:
+        return
+
+    users = load_users()
+    if not users:
+        return
+
+    try:
+        presence_data = get_roblox_presence(users)
+        online_friend_ids = get_online_friends()
+
+        presence_map = {u["userId"]: u for u in presence_data}
+
+        dashboard_channel = bot.get_channel(dashboard_channel_id_active)
+
+        if not dashboard_channel:
+            return
+
+        for uid, msg_id in list(dashboard_message_ids.items()):
+            user = presence_map.get(uid)
+
+            if not user:
+                continue
+
+            try:
+                msg = await dashboard_channel.fetch_message(msg_id)
+
+                user_info = get_roblox_user_info(uid)
+
+                status_label, color, emoji, location, _ = resolve_status(
+                    user,
+                    online_friend_ids
+                )
+
+                embed = build_status_embed(
+                    user_info,
+                    status_label,
+                    color,
+                    emoji,
+                    location
+                )
+
+                await msg.edit(embed=embed)
+
+                # anti rate limit
+                await asyncio.sleep(1)
+
+            except discord.NotFound:
+                dashboard_message_ids.pop(uid, None)
+
+            except Exception as e:
+                print(f"Dashboard refresh error {uid}: {e}")
+
+    except Exception as e:
+        print("refresh_dashboard error:", e)
+        
 @check_roblox.error
 async def check_roblox_error(error):
     print(f"check_roblox error, restarting: {error}")
